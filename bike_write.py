@@ -6,7 +6,6 @@ def change_direc():
     direc = ""
     while direc == "":
         direc = input("Enter the path of the directory with the Bike Data and Database: ")
-        print("The entered path does not point to the 'Bike_Data' folder.")
 
         if not os.path.exists(direc):
             print("The entered path does not exist.")
@@ -18,7 +17,6 @@ def change_direc():
         files = os.listdir(direc)
         files = [f for f in files if os.path.isfile(direc+'/'+f)]
         files.sort()
-        print("The folder contains the following files: ",*files, sep="\n")
 
         return direc, files
     
@@ -28,9 +26,19 @@ def change_direc():
 
 # Function to Select Files to Write to DB
 def select_files(direc, files):
-    files = [f for f in files if os.path.isfile(direc+'/'+f) and f.endswith('.csv') and 'divvy' in f.lower()]
+    station_file = [f for f in files if 'stations' in f.lower() and f.endswith('.csv')]
+    files = [f for f in files if os.path.isfile(direc+'/'+f) and f.endswith('.csv') and 'divvy' in f.lower() and 'inserted_' not in f.lower()]
     add_another = True
     selected_files = list()
+
+    if len(files) == 0:
+        print("No files available. Exiting program...")
+        exit()
+
+    if len(station_file) == 1:
+        station_file = station_file[0]
+    else:
+        station_file = ""
 
     while add_another == True:
         print("The following files are available: ")
@@ -68,7 +76,7 @@ def select_files(direc, files):
         
     print("Selected Files: ",*selected_files, sep="\n")
 
-    return selected_files
+    return selected_files, station_file
 
 # Function to Create a New Database
 def new_db(direc):
@@ -181,10 +189,43 @@ def check_table (cur, conn):
     except Exception as e:
         print(f"Error while creating table {table_name}: {e}")
 
+# Function to Check that Stations Table Exists
+def check_stations_table (cur, conn):
+
+    station_table_name = 'stations'
+    table_connected = False
+
+    try:
+        cur.executescript(f'''
+            CREATE TABLE IF NOT EXISTS {station_table_name} (
+                station_key TEXT PRIMARY KEY,
+                station_id_raw TEXT,
+                station_name_raw TEXT,
+                station_lat FLOAT,
+                station_lng FLOAT,
+                station_name_cleaned TEXT
+        );
+        ''')
+
+        conn.commit()
+        cur.close()
+        conn.close
+
+        table_connected = True
+        print(f"Table {station_table_name} created successfully")
+        return table_connected
+    
+    except Exception as e:
+         print(f"Error while creating table {station_table_name}: {e}")
+
 # Function to Write the Selected Files to the Selected Database
 def write_to_db(file,db_name):
+    insert_successful = False
+    rows_inserted = 0
     conn = sqlite3.connect(db_name)
     cur = conn.cursor()
+    initial_count = conn.total_changes
+
     try:
         handle = open(file)
         print(f"Writing {file} to {db_name}...")
@@ -210,14 +251,63 @@ def write_to_db(file,db_name):
                 cur.execute('''INSERT OR IGNORE INTO Rides (ride_id, rideable_type, started_at, ended_at, member_casual, duration_sec, duration_min, start_station_key, end_station_key) 
                     VALUES ( ?, ?, ?, ?, ?, ?, ?, ?, ? )''', (ride_id, rideable_type, started_at, ended_at, member_casual, duration_sec, duration_min, start_station_key, end_station_key) )
 
+
         conn.commit()
-        print(f"Inserted {i-1} rows into the database.")
+        insert_successful = True
+        rows_inserted = conn.total_changes - initial_count
+        print(f"Inserted {rows_inserted} rows into the database.")
+        return insert_successful
     except Exception as e:
         print("An error occurred:", e)
         conn.rollback()  # Rollback in case of error
     finally:
         handle.close()  # Ensure the file is closed in any case
+        cur.close() # Close the Cursor
+        conn.close() # Close the Connection
 
+# Function to Write the Stations File to the Selected Database
+def write_stations_db(file,db_name):
+    insert_successful = False
+    rows_inserted = 0
+    conn = sqlite3.connect(db_name)
+    cur = conn.cursor()
+    initial_count = conn.total_changes
+
+    try:
+        handle = open(file)
+        print(f"Writing {file} to {db_name}...")
+        i = 0
+        for line in handle:
+            i += 1
+            if i != 1: # Skip the Header Row
+
+                line = line.strip();
+                pieces = line.split(',')
+                if len(pieces) < 6 : continue
+
+                station_key = pieces[0]
+                station_id_raw = pieces[1]
+                station_name_raw = pieces[2]
+                station_lat = pieces[3]
+                station_lng = pieces[4]
+                station_name_cleaned = pieces[5]
+
+                cur.execute('''INSERT OR IGNORE INTO stations (station_key, station_id_raw, station_name_raw, station_lat, station_lng, station_name_cleaned) 
+                    VALUES ( ?, ?, ?, ?, ?, ?)''', (station_key, station_id_raw, station_name_raw, station_lat, station_lng, station_name_cleaned) )
+
+        conn.commit()
+        rows_inserted = conn.total_changes - initial_count
+        insert_successful = True
+        print(f"Inserted {rows_inserted} rows into the database.")
+
+        return insert_successful
+    except Exception as e:
+        print("An error occurred:", e)
+        conn.rollback()  # Rollback in case of error
+    finally:
+        handle.close()  # Ensure the file is closed in any case
+        cur.close() # Close the Cursor
+        conn.close() # Close the Connection
 
 direc = ""
 db_name = ""
@@ -232,7 +322,9 @@ while db_name == "":
         files = results[1]
         
 
-    selected_files = select_files(direc, files) # Prompt the User to Select Files to Write to DB
+    results = select_files(direc, files) # Prompt the User to Select Files to Write to DB
+    selected_files = results[0]
+    station_file = results[1]
 
     if len(selected_files) == 0:
         print("No files selected. Exiting program...")
@@ -261,8 +353,29 @@ if table_connected == False:
     conn.close()
     exit()
 
+insert_successful = False
+
 for file in selected_files:
-    write_to_db(file, db_name) # Write the Selected Files to the Selected Database
+    insert_successful = write_to_db(file, db_name) # Write the Selected Files to the Selected Database
+    if insert_successful == True:
+        original_file_path = os.path.join(direc, file) # Construct the original file path
+        new_file_path = os.path.join(direc, f"inserted_{file}") # Construct the new file path with 'inserted_' prefix
+        os.rename(original_file_path, new_file_path) # Rename the file
+
+        insert_successful = False
+     
+if station_file != "":
+    db_results = connect_db(db_name) # Connect to the Database
+    cur = db_results[0]
+    conn = db_results[1]
+
+    table_connected = check_stations_table(cur, conn) # Check if the Stations Table Exists
+    if table_connected == True:
+        write_stations_db(station_file, db_name) # Write the Selected Files to the Selected Database
+    else:
+        print("Stations table not connected. Exiting program...")
+        conn.close()
+        exit()
 
 print("All files written to the database. Exiting program...")
 conn.close() # Close the Connection to the Database
