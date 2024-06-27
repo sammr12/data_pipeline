@@ -3,6 +3,37 @@ import pandas as pd
 import re
 from tqdm import tqdm
 
+# Function to Choose and Change direcectory
+def change_direc():
+    direc = ""
+    files = list()
+    while direc == "":
+        direc = input("Enter the path of the folder containing the files you want to clean: ")
+
+        if not os.path.exists(direc):
+            print("The entered path does not exist.")
+            direc = ""
+
+    try: # Try changing Working Directory
+        os.chdir(direc)
+        print("New Working Directory: ", os.getcwd())
+        files = os.listdir(direc)
+        files = [f for f in files if os.path.isfile(direc+'/'+f) and f.endswith('.csv') and 'divvy' in f.lower() and not f.endswith('_cleaned.csv')] 
+        if len(files) == 0:
+            print("No files to clean in this directory.")
+            choice = input("Would you like to enter a new directory? (yes/no): ")
+            if choice.lower().strip() == 'no':
+                print("Exiting program...")
+            else:
+                direc = ""
+                return direc
+        else: 
+            print("New Working Directory: ", os.getcwd())
+            return direc
+    
+    except Exception as e:
+        print(f"Unable to change working directory. Error: {e}")
+        direc = ""
 
 #Function to Load Files from 'Bike_Data'
 def load_file(file):
@@ -61,7 +92,6 @@ def column_name_validation(df):
 def drop_nulls(df):
     try:
         rows_before = df.shape[0]
-        print("Removing any rows with null values...")
         df.dropna(inplace=True)
         print(f'Removed ', rows_before - df.shape[0]," null rows")
 
@@ -82,7 +112,6 @@ def drop_invalid_times(df):
 
     # Drop any rows where 'started_at' is greater than 'ended_at' (Print Rows Dropped)
     try:
-        print("Removing rows where 'started_at' is greater than 'ended_at'...")
         df.drop(df[df.started_at > df.ended_at].index, inplace=True)
         print(f'Removed ', rows_before - df.shape[0], " rows fwith invalid start times.")
     except Exception as e:
@@ -90,15 +119,15 @@ def drop_invalid_times(df):
 
     # Calculate the time difference in seconds
     try:
-        df['duration'] = (df['ended_at'] - df['started_at']).dt.total_seconds()
+        df['duration_sec'] = (df['ended_at'] - df['started_at']).dt.total_seconds()
+        df['duration_mins'] = df['duration_sec'] / 60
     except Exception as e:
         print(f"Error creating duration column. Error: {e}")
 
     # Drop any rows where duration is less than 60 seconds
     try:
         rows_before = df.shape[0]
-        print("Removing rows where 'started_at' equals 'ended_at and duration is less than 60 seconds...")
-        df.drop(df[(df.start_station_name == df.end_station_name) & (df['duration'] < 60)].index, inplace=True)
+        df.drop(df[(df.start_station_name == df.end_station_name) & (df['duration_sec'] < 60)].index, inplace=True)
         print(f'Removed ', rows_before - df.shape[0], " rows with trips lasting less than 60 seconds and starting/ending at same station.")
 
     except Exception as e:
@@ -107,8 +136,7 @@ def drop_invalid_times(df):
     # Drop any rows where duration is greater than 24 hours
     try:
         rows_before = df.shape[0]
-        print("Removing rows where 'started_at' equals 'ended_at and duration more than 1 day...")
-        df.drop(df[(df['duration'] > 86400)].index, inplace=True)
+        df.drop(df[(df['duration_sec'] > 86400)].index, inplace=True)
         print(f'Removed ', rows_before - df.shape[0], " rows where trips lasted longer than 24 hours")
 
         return df
@@ -246,7 +274,8 @@ def delete_raw_csv(file,file_path):
             print(f"File {file_path} not found.")
     except Exception as e:
         print(f"Unable to delete {file}")
-    
+
+# Function to Clean Station Names    
 def clean_station_name(station_name):
     # Remove leading and trailing whitespace
     cleaned_name = station_name.strip()
@@ -265,7 +294,6 @@ def clean_station_name(station_name):
 
     return cleaned_name
 
-
 # Function to Clean the Stations Table
 def clean_stations(stations_df):
     # Drop Duplicates Based on 'duplicate_key'
@@ -274,18 +302,10 @@ def clean_stations(stations_df):
     return stations_df
 
 # Have the User Identify the Bike_Data Folder Path
-direc = input(r"Enter the path of the 'Bike_Data' folder: ")
-while not direc.endswith("Bike_Data"):
-    print("The entered path does not point to the 'Bike_Data' folder.")
-    direc = input(r"Enter the path of the 'Bike_Data' folder: ")
-print(f"Files in the directory: {direc}")
+direc = ""
 
-# Try changing Working Directory
-try:
-    os.chdir(direc)
-    print("New Working Directory: ", os.getcwd())
-except Exception as e:
-    print("Unable to change working directory")
+while direc == "":
+    direc = change_direc()
 
 # Create stations_df
 stations_df = pd.DataFrame({'station_key': pd.Series(dtype='str'),
@@ -297,7 +317,7 @@ stations_df = pd.DataFrame({'station_key': pd.Series(dtype='str'),
 # Get List of Files to Clean
 try:
     files = os.listdir(direc)
-    files = [f for f in files if os.path.isfile(direc+'/'+f) and not f.endswith('_cleaned.csv')]
+    files = [f for f in files if os.path.isfile(direc+'/'+f) and f.endswith('.csv') and not f.endswith('_cleaned.csv') and 'divvy' in f.lower()]
     print(*files, sep="\n")
 except Exception as e:
     print(f"Unable to enter files in submitted path: {e}")
@@ -362,4 +382,4 @@ save_cleaned_df(stations_df,file_name)
 
 print("File cleaning complete. Run 'bike_merge.py' to merge all of the data tables.")
 print("IMPORTANT: Review 'stations.csv for any remaining station name inaccuracies not caught by this program.")
-print("Run 'bike_merge.py' to merge all of the data tables.")
+print("Run 'bike_merge.py' to merge all of the data tables. Or, run 'bike_write.py to write the data to a database.")
