@@ -2,6 +2,38 @@ import os
 import pandas as pd
 from tqdm import tqdm
 
+# Function to Choose and Change direcectory
+def change_direc():
+    direc = ""
+    files = list()
+    while direc == "":
+        direc = input("Enter the path of the folder containing the files you want to merge: ")
+
+        if not os.path.exists(direc):
+            print("The entered path does not exist.")
+            direc = ""
+
+    try: # Try changing Working Directory
+        os.chdir(direc)
+        print("New Working Directory: ", os.getcwd())
+        files = os.listdir(direc)
+        files = [f for f in files if os.path.isfile(direc+'/'+f) and f.endswith('.csv') and 'divvy' in f.lower() and f.endswith('_cleaned.csv')] 
+        if len(files) == 0:
+            print("No files cleaned files in this directory.")
+            choice = input("Would you like to enter a new directory? (yes/no): ")
+            if choice.lower().strip() == 'no':
+                print("Exiting program...")
+            else:
+                direc = ""
+                return direc
+        else: 
+            print("New Working Directory: ", os.getcwd())
+            return direc, files
+    
+    except Exception as e:
+        print(f"Unable to change working directory. Error: {e}")
+        direc = ""
+
 #Function to Load Files from 'Bike_Data'
 def load_file(file):
     df = pd.read_csv(file)
@@ -49,26 +81,12 @@ def save_cleaned_df(df, file_name):
 
 
 # Have the User Identify the Bike_Data Folder Path
-direc = input(r"Enter the path of the 'Bike_Data' folder: ")
-while not direc.endswith("Bike_Data"):
-    print("The entered path does not point to the 'Bike_Data' folder.")
-    direc = input(r"Enter the path of the 'Bike_Data' folder: ")
-print(f"Files in the directory: {direc}")
+direc = ""
 
-# Try changing Working Directory
-try:
-    os.chdir(direc)
-    print("New Working Directory: ", os.getcwd())
-except Exception as e:
-    print("Unable to change working directory")
-
-# Get List of Files to Merge
-try:
-    files = os.listdir(direc)
-    files = [f for f in files if os.path.isfile(direc+'/'+f) and f.endswith('_cleaned.csv')]
-    print(*files, sep="\n")
-except Exception as e:
-    print(f"Unable to enter files in submitted path: {e}")
+while direc == "":
+    results = change_direc()
+    direc = results[0]
+    files = results[1]
 
 merged_df = pd.DataFrame({'ride_id': pd.Series(dtype='str'),
                    'rideable_type': pd.Series(dtype='str'),
