@@ -5,6 +5,26 @@ from urllib.request import urlopen, urlretrieve
 from zipfile import ZipFile
 from datetime import datetime, timedelta
 
+# Function to Choose and Change direcectory
+def change_direc():
+    direc = ""
+    while direc == "":
+        direc = input("Enter the path of the directory you want the data downloaded to: ")
+
+        if not os.path.exists(direc):
+            print("The entered path does not exist.")
+            direc = ""
+
+    try: # Try changing Working Directory
+        os.chdir(direc)
+        print("New Working Directory: ", os.getcwd())
+        return direc
+    
+    except Exception as e:
+        print("Unable to change working directory")
+        direc = ""
+
+
 # Function to generate year_month keys
 def generate_year_month_keys(start_year, start_month, count):
     keys = []
@@ -62,6 +82,12 @@ def download_and_unzip_files(file_urls, download_folder):
         except Exception as e:
             print(f"Error processing {url}. Error: {e}")
 
+# !! Main Program !!
+direc = ""
+
+while direc == "": # Loop until a valid directory is entered
+    direc = change_direc()
+
 # The data goes as far back as April of 2020
 current_date = datetime.now()
 oldest_date = datetime(2020, 4, 1)
@@ -98,8 +124,12 @@ except Exception as e:
     print("Unable to successfully generate file URLs. Error:", e)
 
 # Create 'Bike_Data' folder in the current working directory if it doesn't exist
-download_folder = os.path.join(os.getcwd(), "Bike_Data")
-os.makedirs(download_folder, exist_ok=True)
+cwd = os.getcwd()
+if cwd.endswith("Bike_Data"):
+    download_folder = cwd
+else:
+    download_folder = os.path.join(cwd, "Bike_Data")
+    os.makedirs(download_folder, exist_ok=True)
 
 # Download and unzip files
 try:
